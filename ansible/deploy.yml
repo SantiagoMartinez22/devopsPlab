@@ -1,0 +1,144 @@
+---
+- name: Deploy Flask Todo Application
+  hosts: all
+  become: yes
+  vars:
+    app_dir: /app
+    app_user: ec2-user
+    github_repo: "{{ lookup('env', 'GITHUB_REPO') }}"
+    db_password: "{{ lookup('env', 'DB_PASSWORD') }}"
+    db_host: "{{ lookup('env', 'DB_HOST') }}"
+
+  tasks:
+    - name: Debug environment variables
+      debug:
+        msg:
+          - "GitHub Repo: {{ github_repo }}"
+          - "DB Host: {{ db_host }}"
+          - "App Directory: {{ app_dir }}"
+          - "App User: {{ app_user }}"
+
+    - name: Update system packages
+      yum:
+        name: "*"
+        state: latest
+
+    - name: Install required packages
+      yum:
+        name:
+          - python3
+          - python3-pip
+          - git
+          - nginx
+          - postgresql-devel
+          - python3-devel
+        state: present
+
+    - name: Install Development Tools
+      yum:
+        name: "@Development Tools"
+        state: present
+
+    - name: Remove existing app directory
+      file:
+        path: "{{ app_dir }}"
+        state: absent
+
+    - name: Clone application repository
+      git:
+        repo: "{{ github_repo }}"
+        dest: "{{ app_dir }}"
+        force: yes
+      register: git_result
+
+    - name: Verify git clone was successful
+      fail:
+        msg: "Failed to clone repository from {{ github_repo }}"
+      when: git_result.failed | default(false)
+
+    - name: Verify requirements.txt exists
+      stat:
+        path: "{{ app_dir }}/requirements.txt"
+      register: requirements_file
+
+    - name: Fail if requirements.txt not found
+      fail:
+        msg: "requirements.txt not found in {{ app_dir }}"
+      when: not requirements_file.stat.exists
+
+    - name: Change ownership of app directory
+      file:
+        path: "{{ app_dir }}"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        recurse: yes
+
+    - name: Create Python virtual environment and install requirements
+      pip:
+        requirements: "{{ app_dir }}/requirements.txt"
+        virtualenv: "{{ app_dir }}/venv"
+        virtualenv_command: python3 -m venv
+      become_user: "{{ app_user }}"
+
+    - name: Create .env file
+      template:
+        src: env.j2
+        dest: "{{ app_dir }}/.env"
+        owner: "{{ app_user }}"
+        group: "{{ app_user }}"
+        mode: '0644'
+
+    - name: Create Flask systemd service
+      template:
+        src: flask-app.service.j2
+        dest: /etc/systemd/system/flask-app.service
+        mode: '0644'
+      notify: reload systemd
+
+    - name: Create Nginx configuration
+      template:
+        src: nginx.conf.j2
+        dest: /etc/nginx/conf.d/flask-app.conf
+        mode: '0644'
+      notify: restart nginx
+
+    - name: Test Nginx configuration
+      command: nginx -t
+      changed_when: false
+
+    - name: Enable and start Nginx
+      systemd:
+        name: nginx
+        enabled: yes
+        state: started
+
+    - name: Reload systemd and enable Flask app
+      systemd:
+        daemon_reload: yes
+        name: flask-app
+        enabled: yes
+        state: started
+
+    - name: Wait for Flask app to be ready
+      wait_for:
+        port: 5000
+        host: localhost
+        timeout: 60
+
+    - name: Verify application is responding locally
+      uri:
+        url: http://localhost:5000
+        method: GET
+        status_code: 200
+      retries: 5
+      delay: 10
+
+  handlers:
+    - name: reload systemd
+      systemd:
+        daemon_reload: yes
+
+    - name: restart nginx
+      systemd:
+        name: nginx
+        state: restarted 

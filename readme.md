@@ -101,7 +101,7 @@ git --version
 
 ```bash
 # 1️⃣ Clonar repositorio
-git clone https://github.com/SantiagoMartinez22/devops-todolist.git
+git clone https://github.com/SantiagoMartinez22/devopsPlab.git
 cd devops-todolist
 
 # 2️⃣ Configurar entorno virtual
@@ -256,6 +256,7 @@ DEVOPS-[número]: [tipo] Descripción breve
 - [ ] ⚡ **Auto Scaling** para alta demanda
 
 ---
+```
 
 <div align="center">
 

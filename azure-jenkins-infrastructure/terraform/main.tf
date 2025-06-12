@@ -16,6 +16,10 @@ terraform {
 # Configuración del proveedor Azure
 provider "azurerm" {
   features {}
+  
+  # Deshabilitar registro automático de Resource Providers
+  # para evitar conflictos en suscripciones de estudiante
+  resource_provider_registrations = "none"
 }
 
 # Generar clave SSH automáticamente

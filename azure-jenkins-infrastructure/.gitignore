@@ -1,0 +1,44 @@
+# Azure Jenkins Infrastructure - Archivos Sensibles
+# Claves SSH se generan automáticamente por Terraform
+
+# Archivos de Terraform
+*.tfstate
+*.tfstate.backup
+*.tfplan
+.terraform/
+.terraform.lock.hcl
+
+# Variables de entorno y configuración local
+.env
+*.env
+terraform.tfvars.backup
+
+# Claves SSH temporales (generadas automáticamente)
+azure_jenkins_key*
+*.pem
+*.key
+
+# Archivos de Jenkins temporales
+jenkins_home/
+.jenkins/
+
+# Archivos de Ansible temporales
+*.retry
+inventory/hosts.tmp
+inventory/hosts.backup
+
+# Logs y archivos temporales
+*.log
+*.tmp
+.DS_Store
+Thumbs.db
+
+# Archivos de IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Backups automáticos
+*.bak
+*~ 

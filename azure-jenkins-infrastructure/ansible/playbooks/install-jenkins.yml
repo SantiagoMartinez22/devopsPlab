@@ -1,0 +1,100 @@
+---
+- name: Install Jenkins Master
+  hosts: jenkins_master
+  become: yes
+  vars:
+    jenkins_admin_password: "admin123"
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - openjdk-17-jdk
+          - wget
+          - gnupg
+          - software-properties-common
+        state: present
+
+    - name: Add Jenkins repository key
+      apt_key:
+        url: https://pkg.jenkins.io/debian-stable/jenkins.io-2023.key
+        state: present
+
+    - name: Add Jenkins repository
+      apt_repository:
+        repo: deb https://pkg.jenkins.io/debian-stable binary/
+        state: present
+
+    - name: Install Jenkins
+      apt:
+        name: jenkins
+        state: present
+        update_cache: yes
+
+    - name: Start and enable Jenkins
+      systemd:
+        name: jenkins
+        state: started
+        enabled: yes
+
+    - name: Wait for Jenkins to start
+      wait_for:
+        port: 8080
+        delay: 30
+
+    - name: Get Jenkins initial admin password
+      command: cat /var/lib/jenkins/secrets/initialAdminPassword
+      register: jenkins_initial_password
+      changed_when: false
+
+    - name: Display Jenkins initial password
+      debug:
+        msg: "Jenkins initial password: {{ jenkins_initial_password.stdout }}"
+
+- name: Install Jenkins Slave
+  hosts: jenkins_slaves
+  become: yes
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      apt:
+        name:
+          - openjdk-17-jdk
+          - git
+        state: present
+
+    - name: Create jenkins user
+      user:
+        name: jenkins
+        shell: /bin/bash
+        home: /home/jenkins
+        create_home: yes
+
+    - name: Create jenkins .ssh directory
+      file:
+        path: /home/jenkins/.ssh
+        state: directory
+        owner: jenkins
+        group: jenkins
+        mode: '0700'
+
+    - name: Generate SSH key for jenkins user
+      command: ssh-keygen -t rsa -b 4096 -f /home/jenkins/.ssh/id_rsa -N ""
+      args:
+        creates: /home/jenkins/.ssh/id_rsa
+      become_user: jenkins
+
+    - name: Get public key content
+      command: cat /home/jenkins/.ssh/id_rsa.pub
+      register: slave_public_key
+      changed_when: false
+
+    - name: Display slave public key
+      debug:
+        msg: "Add this key to Jenkins Master: {{ slave_public_key.stdout }}" 

@@ -238,13 +238,21 @@ with zipfile.ZipFile('terraform.zip', 'r') as zip_ref:
                             sh '''
                                 echo "🔧 Instalando Jenkins con Ansible..."
                                 
-                                # Instalar Ansible si no existe
-                                if ! command -v ansible &> /dev/null; then
-                                    pip3 install ansible
-                                fi
+                                # Crear entorno virtual aislado para Ansible (evita PEP 668)
+                                echo "Creando entorno virtual para Ansible..."
+                                python3 -m venv /tmp/ansible-venv-${BUILD_NUMBER}
+                                . /tmp/ansible-venv-${BUILD_NUMBER}/bin/activate
                                 
-                                # Ejecutar playbook
-                                ansible-playbook -i inventory/hosts playbooks/install-jenkins.yml -v
+                                # Instalar/actualizar pip y ansible en el venv
+                                pip install --upgrade pip
+                                pip install ansible==9.1.0
+                                
+                                # Verificar instalación
+                                echo "✅ Ansible instalado en entorno virtual:" && ansible-playbook --version
+                                
+                                # Ejecutar playbook usando el ansible del venv
+                                ANSIBLE_BIN=/tmp/ansible-venv-${BUILD_NUMBER}/bin/ansible-playbook
+                                $ANSIBLE_BIN -i inventory/hosts playbooks/install-jenkins.yml -v
                             '''
                         }
                     } catch (Exception e) {

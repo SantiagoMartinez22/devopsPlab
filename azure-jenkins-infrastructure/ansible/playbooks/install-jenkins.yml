@@ -88,7 +88,7 @@
       command: ssh-keygen -t rsa -b 4096 -f /home/jenkins/.ssh/id_rsa -N ""
       args:
         creates: /home/jenkins/.ssh/id_rsa
-      become_user: jenkins
+      # Ejecutamos como root (por defecto) para evitar problemas de permisos al crear archivos temporales
 
     - name: Get public key content
       command: cat /home/jenkins/.ssh/id_rsa.pub

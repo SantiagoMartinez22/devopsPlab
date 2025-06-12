@@ -2,7 +2,7 @@
 jenkins-master ansible_host=MASTER_IP ansible_user=azureuser ansible_ssh_private_key_file=azure_jenkins_key
 
 [jenkins_slaves]
-jenkins-slave ansible_host=SLAVE_IP ansible_user=azureuser ansible_ssh_private_key_file=azure_jenkins_key ansible_ssh_common_args='-o ProxyJump=azureuser@MASTER_IP'
+jenkins-slave ansible_host=SLAVE_IP ansible_user=azureuser ansible_ssh_private_key_file=azure_jenkins_key ansible_ssh_common_args='-o ProxyCommand="ssh -i azure_jenkins_key -o StrictHostKeyChecking=no -W %h:%p azureuser@MASTER_IP"'
 
 [jenkins:children]
 jenkins_master

@@ -128,6 +128,8 @@ with zipfile.ZipFile('terraform.zip', 'r') as zip_ref:
                                 echo "🔐 Guardando clave SSH generada automáticamente..."
                                 $TERRAFORM_BIN output -raw ssh_private_key > ../${SSH_KEY_FILE}
                                 chmod 600 ../${SSH_KEY_FILE}
+                                # Copiarla dentro del directorio ansible para que ansible.cfg la detecte
+                                cp ../${SSH_KEY_FILE} ../ansible/${SSH_KEY_FILE}
                             '''
                             
                             // Marcar que la infraestructura fue desplegada

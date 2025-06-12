@@ -28,40 +28,34 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Instalar Terraform si no existe (usando patrón del Jenkinsfile principal)
+                        // Siempre instalar Terraform (patrón del Jenkinsfile principal)
                         sh '''
-                            # Verificar si Terraform ya está disponible
-                            if command -v terraform &> /dev/null; then
-                                echo "✅ Terraform ya está instalado:"
-                                terraform version
+                            echo "Instalando Terraform en directorio temporal..."
+                            
+                            # Crear directorio temporal para Terraform
+                            mkdir -p /tmp/terraform-${BUILD_NUMBER}
+                            cd /tmp/terraform-${BUILD_NUMBER}
+                            
+                            # Descargar e instalar Terraform usando curl
+                            echo "Descargando Terraform 1.6.0..."
+                            curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/1.6.0/terraform_1.6.0_linux_amd64.zip
+                            
+                            echo "Extrayendo Terraform..."
+                            if command -v unzip &> /dev/null; then
+                                unzip -q terraform.zip
                             else
-                                echo "Instalando Terraform en directorio temporal..."
-                                
-                                # Crear directorio temporal para Terraform
-                                mkdir -p /tmp/terraform-${BUILD_NUMBER}
-                                cd /tmp/terraform-${BUILD_NUMBER}
-                                
-                                # Descargar e instalar Terraform usando curl
-                                echo "Descargando Terraform 1.6.0..."
-                                curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/1.6.0/terraform_1.6.0_linux_amd64.zip
-                                
-                                echo "Extrayendo Terraform..."
-                                if command -v unzip &> /dev/null; then
-                                    unzip -q terraform.zip
-                                else
-                                    # Alternativa si unzip no está disponible
-                                    python3 -c "
+                                # Alternativa si unzip no está disponible
+                                python3 -c "
 import zipfile
 with zipfile.ZipFile('terraform.zip', 'r') as zip_ref:
     zip_ref.extractall('.')
 "
-                                fi
-                                chmod +x terraform
-                                
-                                # Verificar instalación
-                                echo "✅ Terraform instalado correctamente:"
-                                ./terraform version
                             fi
+                            chmod +x terraform
+                            
+                            # Verificar instalación
+                            echo "✅ Terraform instalado correctamente:"
+                            ./terraform version
                         '''
                     } catch (Exception e) {
                         error("❌ Error instalando Terraform: ${e.getMessage()}")

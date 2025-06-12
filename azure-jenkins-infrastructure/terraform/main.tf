@@ -18,8 +18,8 @@ provider "azurerm" {
   features {}
   
   # Deshabilitar registro automático de Resource Providers
-  # para evitar conflictos en suscripciones de estudiante
-  resource_provider_registrations = "none"
+  # para evitar conflictos de concurrencia
+  skip_provider_registration = true
 }
 
 # Generar clave SSH automáticamente

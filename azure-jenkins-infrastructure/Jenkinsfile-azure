@@ -190,6 +190,19 @@ with zipfile.ZipFile('terraform.zip', 'r') as zip_ref:
                                 sleep 30
                             done
                         '''
+
+                        // Esperar a que el Slave esté listo
+                        sh '''
+                            echo "⏳ Esperando a que la VM Slave esté lista..."
+                            for i in {1..10}; do
+                                if ssh -i ${SSH_KEY_FILE} -o ProxyJump=azureuser@$MASTER_IP -o ConnectTimeout=5 -o StrictHostKeyChecking=no azureuser@$SLAVE_IP "echo 'VM Ready'" 2>/dev/null; then
+                                    echo "✅ Slave VM está lista"
+                                    break
+                                fi
+                                echo "Intento $i/10 - Esperando 30 segundos..."
+                                sleep 30
+                            done
+                        '''
                     } catch (Exception e) {
                         error("❌ Error esperando VMs: ${e.getMessage()}")
                     }

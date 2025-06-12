@@ -28,16 +28,40 @@ pipeline {
             steps {
                 script {
                     try {
-                        // Instalar Terraform si no existe
+                        // Instalar Terraform si no existe (usando patrón del Jenkinsfile principal)
                         sh '''
-                            if ! command -v terraform &> /dev/null; then
-                                echo "Instalando Terraform..."
-                                curl -sL https://releases.hashicorp.com/terraform/1.6.0/terraform_1.6.0_linux_amd64.zip -o terraform.zip
-                                unzip -q terraform.zip
-                                sudo mv terraform /usr/local/bin/
-                                rm terraform.zip
+                            # Verificar si Terraform ya está disponible
+                            if command -v terraform &> /dev/null; then
+                                echo "✅ Terraform ya está instalado:"
+                                terraform version
+                            else
+                                echo "Instalando Terraform en directorio temporal..."
+                                
+                                # Crear directorio temporal para Terraform
+                                mkdir -p /tmp/terraform-${BUILD_NUMBER}
+                                cd /tmp/terraform-${BUILD_NUMBER}
+                                
+                                # Descargar e instalar Terraform usando curl
+                                echo "Descargando Terraform 1.6.0..."
+                                curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/1.6.0/terraform_1.6.0_linux_amd64.zip
+                                
+                                echo "Extrayendo Terraform..."
+                                if command -v unzip &> /dev/null; then
+                                    unzip -q terraform.zip
+                                else
+                                    # Alternativa si unzip no está disponible
+                                    python3 -c "
+import zipfile
+with zipfile.ZipFile('terraform.zip', 'r') as zip_ref:
+    zip_ref.extractall('.')
+"
+                                fi
+                                chmod +x terraform
+                                
+                                # Verificar instalación
+                                echo "✅ Terraform instalado correctamente:"
+                                ./terraform version
                             fi
-                            terraform version
                         '''
                     } catch (Exception e) {
                         error("❌ Error instalando Terraform: ${e.getMessage()}")
@@ -55,9 +79,16 @@ pipeline {
                     try {
                         dir("${TF_DIR}") {
                             sh '''
+                                # Usar Terraform desde la ubicación temporal o sistema
+                                if [ -f "/tmp/terraform-${BUILD_NUMBER}/terraform" ]; then
+                                    TERRAFORM_BIN="/tmp/terraform-${BUILD_NUMBER}/terraform"
+                                else
+                                    TERRAFORM_BIN="terraform"
+                                fi
+                                
                                 echo "🔥 Destruyendo infraestructura..."
-                                terraform init
-                                terraform destroy -auto-approve
+                                $TERRAFORM_BIN init
+                                $TERRAFORM_BIN destroy -auto-approve
                                 echo "✅ Infraestructura destruida exitosamente"
                             '''
                         }
@@ -75,26 +106,33 @@ pipeline {
                     try {
                         dir("${TF_DIR}") {
                             sh '''
+                                # Usar Terraform desde la ubicación temporal o sistema
+                                if [ -f "/tmp/terraform-${BUILD_NUMBER}/terraform" ]; then
+                                    TERRAFORM_BIN="/tmp/terraform-${BUILD_NUMBER}/terraform"
+                                else
+                                    TERRAFORM_BIN="terraform"
+                                fi
+                                
                                 echo "🚀 Desplegando infraestructura en Azure..."
                                 echo "🔑 Terraform generará claves SSH automáticamente"
                                 
                                 # Inicializar Terraform
-                                terraform init
+                                $TERRAFORM_BIN init
                                 
                                 # Planificar
-                                terraform plan -out=tfplan
+                                $TERRAFORM_BIN plan -out=tfplan
                                 
                                 # Aplicar
-                                terraform apply -auto-approve tfplan
+                                $TERRAFORM_BIN apply -auto-approve tfplan
                                 
                                 # Mostrar outputs (sin secretos)
                                 echo "📊 Información de la infraestructura:"
-                                terraform output master_public_ip
-                                terraform output jenkins_url
+                                $TERRAFORM_BIN output master_public_ip
+                                $TERRAFORM_BIN output jenkins_url
                                 
                                 # Guardar clave SSH privada para uso posterior
                                 echo "🔐 Guardando clave SSH generada automáticamente..."
-                                terraform output -raw ssh_private_key > ../${SSH_KEY_FILE}
+                                $TERRAFORM_BIN output -raw ssh_private_key > ../${SSH_KEY_FILE}
                                 chmod 600 ../${SSH_KEY_FILE}
                             '''
                             
@@ -117,12 +155,26 @@ pipeline {
                         // Obtener IPs de Terraform
                         dir("${TF_DIR}") {
                             env.MASTER_IP = sh(
-                                script: 'terraform output -raw master_public_ip',
+                                script: '''
+                                    if [ -f "/tmp/terraform-${BUILD_NUMBER}/terraform" ]; then
+                                        TERRAFORM_BIN="/tmp/terraform-${BUILD_NUMBER}/terraform"
+                                    else
+                                        TERRAFORM_BIN="terraform"
+                                    fi
+                                    $TERRAFORM_BIN output -raw master_public_ip
+                                ''',
                                 returnStdout: true
                             ).trim()
                             
                             env.SLAVE_IP = sh(
-                                script: 'terraform output -raw slave_private_ip',
+                                script: '''
+                                    if [ -f "/tmp/terraform-${BUILD_NUMBER}/terraform" ]; then
+                                        TERRAFORM_BIN="/tmp/terraform-${BUILD_NUMBER}/terraform"
+                                    else
+                                        TERRAFORM_BIN="terraform"
+                                    fi
+                                    $TERRAFORM_BIN output -raw slave_private_ip
+                                ''',
                                 returnStdout: true
                             ).trim()
                         }
@@ -214,7 +266,14 @@ pipeline {
                     try {
                         dir("${TF_DIR}") {
                             def jenkinsUrl = sh(
-                                script: 'terraform output -raw jenkins_url',
+                                script: '''
+                                    if [ -f "/tmp/terraform-${BUILD_NUMBER}/terraform" ]; then
+                                        TERRAFORM_BIN="/tmp/terraform-${BUILD_NUMBER}/terraform"
+                                    else
+                                        TERRAFORM_BIN="terraform"
+                                    fi
+                                    $TERRAFORM_BIN output -raw jenkins_url
+                                ''',
                                 returnStdout: true
                             ).trim()
                             
@@ -279,9 +338,16 @@ pipeline {
                     try {
                         dir("${TF_DIR}") {
                             sh '''
+                                # Usar Terraform desde la ubicación temporal o sistema
+                                if [ -f "/tmp/terraform-${BUILD_NUMBER}/terraform" ]; then
+                                    TERRAFORM_BIN="/tmp/terraform-${BUILD_NUMBER}/terraform"
+                                else
+                                    TERRAFORM_BIN="terraform"
+                                fi
+                                
                                 echo "Destruyendo infraestructura debido a fallo..."
-                                terraform init
-                                terraform destroy -auto-approve
+                                $TERRAFORM_BIN init
+                                $TERRAFORM_BIN destroy -auto-approve
                                 echo "✅ Infraestructura destruida automáticamente"
                             '''
                         }

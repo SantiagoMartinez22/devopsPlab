@@ -103,6 +103,45 @@ resource "azurerm_network_security_group" "jenkins" {
     destination_address_prefix = "*"
   }
 
+  # Splunk Web Interface
+  security_rule {
+    name                       = "Splunk-Web"
+    priority                   = 1004
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "8000"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  # Splunk Management Port
+  security_rule {
+    name                       = "Splunk-Management"
+    priority                   = 1005
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "8089"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
+  # Splunk Indexer Port (for data forwarding)
+  security_rule {
+    name                       = "Splunk-Indexer"
+    priority                   = 1006
+    direction                  = "Inbound"
+    access                     = "Allow"
+    protocol                   = "Tcp"
+    source_port_range          = "*"
+    destination_port_range     = "9997"
+    source_address_prefix      = "*"
+    destination_address_prefix = "*"
+  }
+
   tags = azurerm_resource_group.jenkins.tags
 }
 

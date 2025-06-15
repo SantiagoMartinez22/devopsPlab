@@ -6,8 +6,10 @@ Automatización **ultra-simplificada** para desplegar Jenkins Master-Slave en Az
 
 ## 🏗️ Arquitectura
 
-- **Master**: VM con IP pública, Jenkins Master con JDK 17
-- **Slave**: VM con IP privada, Jenkins Agent con JDK 17
+- **Master**: VM con IP pública, Jenkins Master con JDK 17 + Splunk Enterprise 9.4.2
+- **Slave**: VM con IP privada, Jenkins Agent con JDK 17 + Splunk Universal Forwarder
+- **Log Management**: Splunk Enterprise centraliza logs del ecosistema
+- **Deployment Client**: Universal Forwarder reporta automáticamente al Enterprise
 - **Costo optimizado**: Recursos mínimos para suscripción de estudiante
 - **SSH Automático**: Claves generadas por Terraform (como AWS Key Pairs)
 
@@ -95,6 +97,8 @@ El pipeline tiene tres parámetros:
 - Ubuntu 22.04 LTS
 - OpenJDK 17
 - Jenkins LTS (Master)
+- **Splunk Enterprise 9.4.2** (Master)
+- **Splunk Universal Forwarder 9.4.2** (Slave)
 - Git y herramientas básicas (Slave)
 
 ## 🔐 Acceso Post-Instalación
@@ -109,8 +113,14 @@ Después de ejecutar el pipeline exitosamente:
 
 📊 Información de acceso:
 - Jenkins URL: http://XX.XX.XX.XX:8080
+- Splunk Enterprise URL: http://XX.XX.XX.XX:8000
 - Master IP: XX.XX.XX.XX
 - Slave IP: 10.0.1.X
+
+🔐 Credenciales de acceso:
+- Jenkins: Password inicial en /var/lib/jenkins/secrets/initialAdminPassword
+- Splunk Enterprise: admin / Projectlabdevops
+- Splunk Universal Forwarder: admin / ProjectlabdevopsUF
 
 🔐 Para acceder por SSH:
 1. La clave SSH se generó automáticamente y está en: azure_jenkins_key
@@ -148,12 +158,27 @@ En Jenkins Web UI:
 5. **Host:** `SLAVE_PRIVATE_IP`
 6. **Credentials:** Usar la misma clave SSH (`azure_jenkins_key`)
 
+### 5. Verificar configuración de Splunk
+
+#### Splunk Enterprise (Master):
+1. Ve a `http://MASTER_IP:8000`
+2. Login: `admin` / `Projectlabdevops`
+3. Verificar en **Settings** → **Distributed Management** → **Deployment Server**
+4. Deberías ver el Universal Forwarder conectado
+
+#### Splunk Universal Forwarder (Slave):
+- Se conecta automáticamente como deployment client
+- Envía logs del sistema y Jenkins al Enterprise
+- Configuración automática: `/opt/splunkforwarder/etc/system/local/`
+
 ## 💰 Costos Estimados (Suscripción Estudiante)
 
 - **2x Standard_B2s VMs**: ~$60-80 USD/mes
 - **1x IP Pública**: ~$3 USD/mes
 - **Storage (Standard_LRS)**: ~$5 USD/mes
 - **Claves SSH**: $0 (generadas gratis por Terraform)
+- **Splunk Enterprise**: $0 (licencia gratuita hasta 500MB/día)
+- **Splunk Universal Forwarder**: $0 (siempre gratuito)
 - **Total estimado**: ~$70-90 USD/mes
 
 ## 🔧 Troubleshooting

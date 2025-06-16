@@ -131,7 +131,6 @@
         owner: splunk
         group: splunk
         mode: '0644'
-      notify: restart splunk
 
     - name: Create deployment apps directory
       file:
@@ -141,11 +140,15 @@
         group: splunk
         mode: '0755'
 
-    - name: Restart Splunk to apply configuration
-      systemd:
-        name: Splunkd
-        state: restarted
-        enabled: yes
+    - name: Stop Splunk before applying configuration
+      shell: |
+        sudo -u splunk /opt/splunk/bin/splunk stop
+      ignore_errors: yes
+
+    - name: Start Splunk to apply configuration
+      shell: |
+        sudo -u splunk /opt/splunk/bin/splunk start
+      ignore_errors: yes
 
     - name: Wait for Splunk to start
       wait_for:
@@ -160,11 +163,7 @@
           - "Username: {{ splunk_admin_user }}"
           - "Password: {{ splunk_admin_password }}"
 
-  handlers:
-    - name: restart splunk
-      systemd:
-        name: Splunkd
-        state: restarted
+
 
 - name: Install Jenkins Slave and Splunk Universal Forwarder
   hosts: jenkins_slaves
@@ -332,11 +331,10 @@
       args:
         creates: /etc/systemd/system/SplunkForwarder.service
 
-    - name: Start and enable Splunk Universal Forwarder service
-      systemd:
-        name: SplunkForwarder
-        state: started
-        enabled: yes
+    - name: Ensure Splunk Universal Forwarder is running
+      shell: |
+        sudo -u splunk /opt/splunkforwarder/bin/splunk start
+      ignore_errors: yes
 
     - name: Display Splunk UF installation information
       debug:

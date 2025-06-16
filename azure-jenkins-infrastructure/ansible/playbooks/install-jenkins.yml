@@ -104,11 +104,16 @@
         group: splunk
         mode: '0600'
 
+    - name: Check if Splunk has been started before
+      stat:
+        path: /opt/splunk/var/lib/splunk/kvstore
+      register: splunk_kvstore
+
     - name: Start Splunk for first time and accept license
-      command: /opt/splunk/bin/splunk start --accept-license --answer-yes --no-prompt
-      become_user: splunk
-      args:
-        creates: /opt/splunk/var/lib/splunk/kvstore
+      shell: |
+        sudo -u splunk /opt/splunk/bin/splunk start --accept-license --answer-yes --no-prompt
+      when: not splunk_kvstore.stat.exists
+      ignore_errors: yes
 
     - name: Enable Splunk to start at boot
       command: /opt/splunk/bin/splunk enable boot-start -user splunk --accept-license --answer-yes
@@ -311,11 +316,16 @@
         group: splunk
         mode: '0644'
 
+    - name: Check if Splunk UF has been started before
+      stat:
+        path: /opt/splunkforwarder/var/lib/splunk
+      register: splunk_uf_lib
+
     - name: Start Splunk Universal Forwarder for first time
-      command: /opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt
-      become_user: splunk
-      args:
-        creates: /opt/splunkforwarder/var/lib/splunk
+      shell: |
+        sudo -u splunk /opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt
+      when: not splunk_uf_lib.stat.exists
+      ignore_errors: yes
 
     - name: Enable Splunk Universal Forwarder to start at boot
       command: /opt/splunkforwarder/bin/splunk enable boot-start -user splunk --accept-license --answer-yes

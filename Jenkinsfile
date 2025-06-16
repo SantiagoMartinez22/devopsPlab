@@ -55,7 +55,7 @@ pipeline {
                     
                     echo "Extrayendo Terraform..."
                     if command -v unzip &> /dev/null; then
-                        unzip -q terraform.zip
+                        unzip -o -q terraform.zip
                     else
                         # Alternativa si unzip no está disponible
                         python3 -c "
@@ -584,7 +584,7 @@ DIAG_EOF
                             
                             echo "Descargando Terraform para limpieza..."
                             curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-                            unzip -q terraform.zip
+                            unzip -o -q terraform.zip
                             chmod +x terraform
                             
                             # Volver al directorio de terraform

@@ -7,7 +7,7 @@
     splunk_admin_user: "admin"
     splunk_admin_password: "Projectlabdevops"
     splunk_version: "9.4.2"
-    splunk_build: "6b6bb117a5b6"
+    splunk_build: "e9664af3d956"
   tasks:
     - name: Update apt cache
       apt:
@@ -60,34 +60,38 @@
         msg: "Jenkins initial password: {{ jenkins_initial_password.stdout }}"
 
     # Splunk Enterprise Installation
-    - name: Create splunk user
+    - name: Download Splunk Enterprise DEB package
+      get_url:
+        url: "https://download.splunk.com/products/splunk/releases/9.4.2/linux/splunk-9.4.2-e9664af3d956-linux-amd64.deb"
+        dest: "/tmp/splunk-9.4.2-e9664af3d956-linux-amd64.deb"
+        mode: '0644'
+        timeout: 300
+
+    - name: Install Splunk Enterprise from DEB package
+      apt:
+        deb: "/tmp/splunk-9.4.2-e9664af3d956-linux-amd64.deb"
+        state: present
+
+    - name: Ensure splunk user exists (DEB package should create it automatically)
       user:
         name: splunk
         shell: /bin/bash
         home: /opt/splunk
         create_home: no
         system: yes
+      ignore_errors: yes
 
-    - name: Download Splunk Enterprise DEB package
-      get_url:
-        url: "https://download.splunk.com/products/splunk/releases/9.4.2/linux/splunk-9.4.2-e9664af3d956-linux-amd64.deb"
-        dest: "/tmp/splunk-{{ splunk_version }}-{{ splunk_build }}-linux-2.6-amd64.deb"
-        mode: '0644'
-        timeout: 300
-
-    - name: Install Splunk Enterprise from DEB package
-      apt:
-        deb: "/tmp/splunk-{{ splunk_version }}-{{ splunk_build }}-linux-2.6-amd64.deb"
-        state: present
-
-    - name: Set ownership for Splunk directory
+    - name: Create system/local directory if needed
       file:
-        path: /opt/splunk
+        path: /opt/splunk/etc/system/local
         state: directory
         owner: splunk
         group: splunk
         mode: '0755'
-        recurse: yes
+
+    - name: Fix ownership for Splunk installation
+      command: chown -R splunk:splunk /opt/splunk
+      ignore_errors: yes
 
     - name: Create Splunk user-seed.conf
       copy:
@@ -164,7 +168,7 @@
     splunk_uf_admin_user: "admin"
     splunk_uf_admin_password: "ProjectlabdevopsUF"
     splunk_uf_version: "9.4.2"
-    splunk_uf_build: "6b6bb117a5b6"
+    splunk_uf_build: "e9664af3d956"
   tasks:
     - name: Update apt cache
       apt:
@@ -209,34 +213,38 @@
         msg: "Add this key to Jenkins Master: {{ slave_public_key.stdout }}"
 
     # Splunk Universal Forwarder Installation
-    - name: Create splunk user for Universal Forwarder
+    - name: Download Splunk Universal Forwarder DEB package
+      get_url:
+        url: "https://download.splunk.com/products/universalforwarder/releases/9.4.2/linux/splunkforwarder-9.4.2-e9664af3d956-linux-amd64.deb"
+        dest: "/tmp/splunkforwarder-9.4.2-e9664af3d956-linux-amd64.deb"
+        mode: '0644'
+        timeout: 300
+
+    - name: Install Splunk Universal Forwarder from DEB package
+      apt:
+        deb: "/tmp/splunkforwarder-9.4.2-e9664af3d956-linux-amd64.deb"
+        state: present
+
+    - name: Ensure splunk user exists for Universal Forwarder
       user:
         name: splunk
         shell: /bin/bash
         home: /opt/splunkforwarder
         create_home: no
         system: yes
+      ignore_errors: yes
 
-    - name: Download Splunk Universal Forwarder DEB package
-      get_url:
-        url: "https://download.splunk.com/products/universalforwarder/releases/9.4.2/linux/splunkforwarder-9.4.2-e9664af3d956-linux-amd64.deb"
-        dest: "/tmp/splunkforwarder-{{ splunk_uf_version }}-{{ splunk_uf_build }}-linux-2.6-amd64.deb"
-        mode: '0644'
-        timeout: 300
-
-    - name: Install Splunk Universal Forwarder from DEB package
-      apt:
-        deb: "/tmp/splunkforwarder-{{ splunk_uf_version }}-{{ splunk_uf_build }}-linux-2.6-amd64.deb"
-        state: present
-
-    - name: Set ownership for Splunk Universal Forwarder directory
+    - name: Create system/local directory for UF
       file:
-        path: /opt/splunkforwarder
+        path: /opt/splunkforwarder/etc/system/local
         state: directory
         owner: splunk
         group: splunk
         mode: '0755'
-        recurse: yes
+
+    - name: Fix ownership for Splunk Universal Forwarder
+      command: chown -R splunk:splunk /opt/splunkforwarder
+      ignore_errors: yes
 
     - name: Create Splunk UF user-seed.conf
       copy:

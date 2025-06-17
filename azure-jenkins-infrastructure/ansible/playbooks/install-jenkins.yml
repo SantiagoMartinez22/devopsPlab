@@ -326,12 +326,17 @@
       when: not splunk_uf_lib.stat.exists
       ignore_errors: yes
 
+    - name: Stop Splunk UF before configuring boot-start
+      shell: |
+        sudo -u splunk /opt/splunkforwarder/bin/splunk stop
+      ignore_errors: yes
+
     - name: Enable Splunk Universal Forwarder to start at boot
       command: /opt/splunkforwarder/bin/splunk enable boot-start -user splunk --accept-license --answer-yes
       args:
         creates: /etc/systemd/system/SplunkForwarder.service
 
-    - name: Ensure Splunk Universal Forwarder is running
+    - name: Start Splunk Universal Forwarder after boot-start configuration
       shell: |
         sudo -u splunk /opt/splunkforwarder/bin/splunk start
       ignore_errors: yes

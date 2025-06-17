@@ -1,9 +1,13 @@
 ---
-- name: Install Jenkins Master
+- name: Install Jenkins Master and Splunk Enterprise
   hosts: jenkins_master
   become: yes
   vars:
     jenkins_admin_password: "admin123"
+    splunk_admin_user: "admin"
+    splunk_admin_password: "Projectlabdevops"
+    splunk_version: "9.4.2"
+    splunk_build: "e9664af3d956"
   tasks:
     - name: Update apt cache
       apt:
@@ -16,6 +20,7 @@
           - wget
           - gnupg
           - software-properties-common
+          - curl
         state: present
 
     - name: Add Jenkins repository key
@@ -54,9 +59,120 @@
       debug:
         msg: "Jenkins initial password: {{ jenkins_initial_password.stdout }}"
 
-- name: Install Jenkins Slave
+    # Splunk Enterprise Installation
+    - name: Download Splunk Enterprise DEB package
+      get_url:
+        url: "https://download.splunk.com/products/splunk/releases/9.4.2/linux/splunk-9.4.2-e9664af3d956-linux-amd64.deb"
+        dest: "/tmp/splunk-9.4.2-e9664af3d956-linux-amd64.deb"
+        mode: '0644'
+        timeout: 300
+
+    - name: Install Splunk Enterprise from DEB package
+      apt:
+        deb: "/tmp/splunk-9.4.2-e9664af3d956-linux-amd64.deb"
+        state: present
+
+    - name: Ensure splunk user exists (DEB package should create it automatically)
+      user:
+        name: splunk
+        shell: /bin/bash
+        home: /opt/splunk
+        create_home: no
+        system: yes
+      ignore_errors: yes
+
+    - name: Create system/local directory if needed
+      file:
+        path: /opt/splunk/etc/system/local
+        state: directory
+        owner: splunk
+        group: splunk
+        mode: '0755'
+
+    - name: Fix ownership for Splunk installation
+      command: chown -R splunk:splunk /opt/splunk
+      ignore_errors: yes
+
+    - name: Create Splunk user-seed.conf
+      copy:
+        content: |
+          [user_info]
+          USERNAME = {{ splunk_admin_user }}
+          PASSWORD = {{ splunk_admin_password }}
+        dest: /opt/splunk/etc/system/local/user-seed.conf
+        owner: splunk
+        group: splunk
+        mode: '0600'
+
+    - name: Check if Splunk has been started before
+      stat:
+        path: /opt/splunk/var/lib/splunk/kvstore
+      register: splunk_kvstore
+
+    - name: Start Splunk for first time and accept license
+      shell: |
+        sudo -u splunk /opt/splunk/bin/splunk start --accept-license --answer-yes --no-prompt
+      when: not splunk_kvstore.stat.exists
+      ignore_errors: yes
+
+    - name: Enable Splunk to start at boot
+      command: /opt/splunk/bin/splunk enable boot-start -user splunk --accept-license --answer-yes
+      args:
+        creates: /etc/systemd/system/Splunkd.service
+
+    - name: Configure Splunk deployment server
+      copy:
+        content: |
+          [deployment-server]
+          
+          [target-broker:deploymentServer]
+          targetUri = {{ ansible_default_ipv4.address }}:8089
+        dest: /opt/splunk/etc/system/local/serverclass.conf
+        owner: splunk
+        group: splunk
+        mode: '0644'
+
+    - name: Create deployment apps directory
+      file:
+        path: /opt/splunk/etc/deployment-apps
+        state: directory
+        owner: splunk
+        group: splunk
+        mode: '0755'
+
+    - name: Stop Splunk before applying configuration
+      shell: |
+        sudo -u splunk /opt/splunk/bin/splunk stop
+      ignore_errors: yes
+
+    - name: Start Splunk to apply configuration
+      shell: |
+        sudo -u splunk /opt/splunk/bin/splunk start
+      ignore_errors: yes
+
+    - name: Wait for Splunk to start
+      wait_for:
+        port: 8000
+        delay: 30
+
+    - name: Display Splunk access information
+      debug:
+        msg: 
+          - "Splunk Enterprise installed successfully!"
+          - "Web Interface: http://{{ ansible_default_ipv4.address }}:8000"
+          - "Username: {{ splunk_admin_user }}"
+          - "Password: {{ splunk_admin_password }}"
+
+
+
+- name: Install Jenkins Slave and Splunk Universal Forwarder
   hosts: jenkins_slaves
   become: yes
+  vars:
+    splunk_uf_admin_user: "admin"
+    splunk_uf_admin_password: "ProjectlabdevopsUF"
+    splunk_uf_version: "9.4.2"
+    splunk_uf_build: "e9664af3d956"
   tasks:
     - name: Update apt cache
       apt:
@@ -67,6 +183,8 @@
         name:
           - openjdk-17-jdk
           - git
+          - wget
+          - curl
         state: present
 
     - name: Create jenkins user
@@ -88,7 +206,6 @@
       command: ssh-keygen -t rsa -b 4096 -f /home/jenkins/.ssh/id_rsa -N ""
       args:
         creates: /home/jenkins/.ssh/id_rsa
-      # Ejecutamos como root (por defecto) para evitar problemas de permisos al crear archivos temporales
 
     - name: Get public key content
       command: cat /home/jenkins/.ssh/id_rsa.pub
@@ -97,4 +214,138 @@
 
     - name: Display slave public key
       debug:
-        msg: "Add this key to Jenkins Master: {{ slave_public_key.stdout }}" 
+        msg: "Add this key to Jenkins Master: {{ slave_public_key.stdout }}"
+
+    # Splunk Universal Forwarder Installation
+    - name: Download Splunk Universal Forwarder DEB package
+      get_url:
+        url: "https://download.splunk.com/products/universalforwarder/releases/9.4.2/linux/splunkforwarder-9.4.2-e9664af3d956-linux-amd64.deb"
+        dest: "/tmp/splunkforwarder-9.4.2-e9664af3d956-linux-amd64.deb"
+        mode: '0644'
+        timeout: 300
+
+    - name: Install Splunk Universal Forwarder from DEB package
+      apt:
+        deb: "/tmp/splunkforwarder-9.4.2-e9664af3d956-linux-amd64.deb"
+        state: present
+
+    - name: Ensure splunk user exists for Universal Forwarder
+      user:
+        name: splunk
+        shell: /bin/bash
+        home: /opt/splunkforwarder
+        create_home: no
+        system: yes
+      ignore_errors: yes
+
+    - name: Create system/local directory for UF
+      file:
+        path: /opt/splunkforwarder/etc/system/local
+        state: directory
+        owner: splunk
+        group: splunk
+        mode: '0755'
+
+    - name: Fix ownership for Splunk Universal Forwarder
+      command: chown -R splunk:splunk /opt/splunkforwarder
+      ignore_errors: yes
+
+    - name: Create Splunk UF user-seed.conf
+      copy:
+        content: |
+          [user_info]
+          USERNAME = {{ splunk_uf_admin_user }}
+          PASSWORD = {{ splunk_uf_admin_password }}
+        dest: /opt/splunkforwarder/etc/system/local/user-seed.conf
+        owner: splunk
+        group: splunk
+        mode: '0600'
+
+    - name: Get Jenkins Master IP for Splunk deployment server
+      set_fact:
+        master_ip: "{{ hostvars[groups['jenkins_master'][0]]['ansible_default_ipv4']['address'] }}"
+
+    - name: Configure Splunk UF deployment client
+      copy:
+        content: |
+          [deployment-client]
+          
+          [target-broker:deploymentServer]
+          targetUri = {{ master_ip }}:8089
+        dest: /opt/splunkforwarder/etc/system/local/deploymentclient.conf
+        owner: splunk
+        group: splunk
+        mode: '0644'
+
+    - name: Configure Splunk UF outputs to send data to master
+      copy:
+        content: |
+          [tcpout]
+          defaultGroup = primary_indexers
+          
+          [tcpout:primary_indexers]
+          server = {{ master_ip }}:9997
+          
+          [tcpout-server://{{ master_ip }}:9997]
+        dest: /opt/splunkforwarder/etc/system/local/outputs.conf
+        owner: splunk
+        group: splunk
+        mode: '0644'
+
+    - name: Configure Splunk UF inputs to monitor system logs
+      copy:
+        content: |
+          [default]
+          host = jenkins-slave
+          
+          [monitor:///var/log/syslog]
+          disabled = false
+          sourcetype = syslog
+          
+          [monitor:///var/log/auth.log]
+          disabled = false
+          sourcetype = linux_secure
+          
+          [monitor:///home/jenkins/workspace/*/build.log]
+          disabled = false
+          sourcetype = jenkins_build_log
+          recursive = true
+        dest: /opt/splunkforwarder/etc/system/local/inputs.conf
+        owner: splunk
+        group: splunk
+        mode: '0644'
+
+    - name: Check if Splunk UF has been started before
+      stat:
+        path: /opt/splunkforwarder/var/lib/splunk
+      register: splunk_uf_lib
+
+    - name: Start Splunk Universal Forwarder for first time
+      shell: |
+        sudo -u splunk /opt/splunkforwarder/bin/splunk start --accept-license --answer-yes --no-prompt
+      when: not splunk_uf_lib.stat.exists
+      ignore_errors: yes
+
+    - name: Stop Splunk UF before configuring boot-start
+      shell: |
+        sudo -u splunk /opt/splunkforwarder/bin/splunk stop
+      ignore_errors: yes
+
+    - name: Enable Splunk Universal Forwarder to start at boot
+      command: /opt/splunkforwarder/bin/splunk enable boot-start -user splunk --accept-license --answer-yes
+      args:
+        creates: /etc/systemd/system/SplunkForwarder.service
+
+    - name: Start Splunk Universal Forwarder after boot-start configuration
+      shell: |
+        sudo -u splunk /opt/splunkforwarder/bin/splunk start
+      ignore_errors: yes
+
+    - name: Display Splunk UF installation information
+      debug:
+        msg: 
+          - "Splunk Universal Forwarder installed successfully!"
+          - "Configured as deployment client reporting to: {{ master_ip }}:8089"
+          - "Forwarding data to: {{ master_ip }}:9997"
+          - "Username: {{ splunk_uf_admin_user }}"
+          - "Password: {{ splunk_uf_admin_password }}" 

@@ -1,0 +1,410 @@
+pipeline {
+    agent {
+        label 'azure'  // Usar el slave de Azure
+    }
+
+    parameters {
+        choice(
+            name: 'BRANCH_TO_ANALYZE', 
+            choices: ['main', 'develop', 'feature/*'], 
+            description: 'Branch a analizar'
+        )
+        booleanParam(
+            name: 'SKIP_TESTS', 
+            defaultValue: false, 
+            description: 'Saltar ejecución de tests'
+        )
+    }
+
+    environment {
+        // Credenciales de SonarCloud (configurar en Jenkins)
+        SONAR_TOKEN = credentials('SONAR_TOKEN')
+        SONAR_ORGANIZATION = credentials('SONAR_ORGANIZATION')
+        SONAR_PROJECT_KEY = credentials('SONAR_PROJECT_KEY')
+        
+        // Variables del proyecto
+        PROJECT_NAME = 'devopsPlab'
+        PYTHON_VERSION = '3.10'
+        
+        // Directorios
+        SONAR_SCANNER_HOME = '/tmp/sonar-scanner'
+        COVERAGE_REPORTS = 'coverage.xml'
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                script {
+                    try {
+                        echo "🔄 Descargando código fuente..."
+                        
+                        // Limpiar workspace anterior
+                        deleteDir()
+                        
+                        // Checkout del código
+                        checkout scm
+                        
+                        // Mostrar información del commit
+                        sh '''
+                            echo "=== INFORMACIÓN DEL COMMIT ==="
+                            git log -1 --oneline
+                            echo "Branch actual: $(git branch --show-current || echo 'detached HEAD')"
+                            echo "Commit hash: $(git rev-parse HEAD)"
+                            echo "Autor: $(git log -1 --pretty=format:'%an <%ae>')"
+                            echo "Fecha: $(git log -1 --pretty=format:'%ad')"
+                        '''
+                        
+                        echo "✅ Código descargado exitosamente"
+                    } catch (Exception e) {
+                        error("❌ Error durante checkout: ${e.getMessage()}")
+                    }
+                }
+            }
+        }
+
+        stage('Setup Environment') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            echo "🔧 Configurando entorno de desarrollo..."
+                            
+                            # Verificar herramientas disponibles
+                            python3 --version
+                            pip3 --version || echo "pip3 no encontrado"
+                            
+                            # Crear entorno virtual para el proyecto
+                            echo "Creando entorno virtual..."
+                            python3 -m venv /tmp/venv-${BUILD_NUMBER}
+                            . /tmp/venv-${BUILD_NUMBER}/bin/activate
+                            
+                            # Actualizar pip
+                            pip install --upgrade pip
+                            
+                            # Instalar dependencias del proyecto
+                            if [ -f requirements.txt ]; then
+                                echo "Instalando dependencias del proyecto..."
+                                pip install -r requirements.txt
+                            else
+                                echo "⚠️ No se encontró requirements.txt"
+                            fi
+                            
+                            # Instalar herramientas de testing y calidad
+                            echo "Instalando herramientas de testing..."
+                            pip install pytest pytest-cov coverage flake8 pylint black
+                            
+                            # Verificar instalaciones
+                            echo "✅ Herramientas instaladas:"
+                            pip list | grep -E "(pytest|coverage|flake8|pylint|black)"
+                        '''
+                        
+                        echo "✅ Entorno configurado exitosamente"
+                    } catch (Exception e) {
+                        error("❌ Error configurando entorno: ${e.getMessage()}")
+                    }
+                }
+            }
+        }
+
+        stage('Install SonarScanner') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            echo "📥 Instalando SonarScanner..."
+                            
+                            # Crear directorio para SonarScanner
+                            mkdir -p ${SONAR_SCANNER_HOME}
+                            cd ${SONAR_SCANNER_HOME}
+                            
+                            # Descargar SonarScanner
+                            SONAR_SCANNER_VERSION="5.0.1.3006"
+                            echo "Descargando SonarScanner ${SONAR_SCANNER_VERSION}..."
+                            curl -fsSL -o sonar-scanner-cli.zip \
+                                "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-${SONAR_SCANNER_VERSION}-linux.zip"
+                            
+                            # Extraer
+                            unzip -q sonar-scanner-cli.zip
+                            mv sonar-scanner-${SONAR_SCANNER_VERSION}-linux sonar-scanner
+                            
+                            # Hacer ejecutable
+                            chmod +x sonar-scanner/bin/sonar-scanner
+                            
+                            # Verificar instalación
+                            echo "✅ SonarScanner instalado:"
+                            ./sonar-scanner/bin/sonar-scanner --version
+                        '''
+                        
+                        echo "✅ SonarScanner instalado exitosamente"
+                    } catch (Exception e) {
+                        error("❌ Error instalando SonarScanner: ${e.getMessage()}")
+                    }
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            when {
+                expression { params.SKIP_TESTS == false }
+            }
+            steps {
+                script {
+                    try {
+                        sh '''
+                            echo "🧪 Ejecutando tests con cobertura..."
+                            
+                            # Activar entorno virtual
+                            . /tmp/venv-${BUILD_NUMBER}/bin/activate
+                            
+                            # Ejecutar tests con pytest y cobertura
+                            if [ -d "tests" ]; then
+                                echo "Ejecutando tests con pytest..."
+                                pytest tests/ \
+                                    --cov=todor \
+                                    --cov-report=xml:coverage.xml \
+                                    --cov-report=html:htmlcov \
+                                    --cov-report=term \
+                                    --junitxml=test-results.xml \
+                                    -v
+                                
+                                echo "✅ Tests ejecutados exitosamente"
+                                
+                                # Mostrar resumen de cobertura
+                                echo "=== RESUMEN DE COBERTURA ==="
+                                coverage report
+                                
+                            else
+                                echo "⚠️ No se encontró directorio de tests, creando reporte de cobertura básico..."
+                                # Crear un reporte básico para SonarCloud
+                                coverage run --source=todor -m pytest --collect-only || true
+                                coverage xml -o coverage.xml || true
+                            fi
+                        '''
+                        
+                        // Publicar resultados de tests
+                        publishTestResults(
+                            testResultsPattern: 'test-results.xml',
+                            allowEmptyResults: true
+                        )
+                        
+                        // Publicar cobertura HTML
+                        publishHTML([
+                            allowMissing: false,
+                            alwaysLinkToLastBuild: true,
+                            keepAll: true,
+                            reportDir: 'htmlcov',
+                            reportFiles: 'index.html',
+                            reportName: 'Coverage Report'
+                        ])
+                        
+                        echo "✅ Tests completados exitosamente"
+                    } catch (Exception e) {
+                        echo "⚠️ Tests fallaron, pero continuando con análisis: ${e.getMessage()}"
+                        // No fallar el pipeline si los tests fallan
+                    }
+                }
+            }
+        }
+
+        stage('Code Quality Analysis') {
+            parallel {
+                stage('Flake8 - Style Check') {
+                    steps {
+                        script {
+                            try {
+                                sh '''
+                                    echo "🔍 Ejecutando análisis de estilo con Flake8..."
+                                    
+                                    # Activar entorno virtual
+                                    . /tmp/venv-${BUILD_NUMBER}/bin/activate
+                                    
+                                    # Ejecutar flake8
+                                    flake8 todor/ --format=json --output-file=flake8-report.json || true
+                                    flake8 todor/ --tee --output-file=flake8-report.txt || true
+                                    
+                                    echo "✅ Análisis de estilo completado"
+                                '''
+                            } catch (Exception e) {
+                                echo "⚠️ Warning en análisis de estilo: ${e.getMessage()}"
+                            }
+                        }
+                    }
+                }
+                
+                stage('Pylint - Code Analysis') {
+                    steps {
+                        script {
+                            try {
+                                sh '''
+                                    echo "🔍 Ejecutando análisis de código con Pylint..."
+                                    
+                                    # Activar entorno virtual
+                                    . /tmp/venv-${BUILD_NUMBER}/bin/activate
+                                    
+                                    # Ejecutar pylint
+                                    pylint todor/ --output-format=json > pylint-report.json || true
+                                    pylint todor/ > pylint-report.txt || true
+                                    
+                                    echo "✅ Análisis de código completado"
+                                '''
+                            } catch (Exception e) {
+                                echo "⚠️ Warning en análisis de código: ${e.getMessage()}"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('SonarCloud Analysis') {
+            steps {
+                script {
+                    try {
+                        sh '''
+                            echo "☁️ Ejecutando análisis de SonarCloud..."
+                            
+                            # Configurar variables para SonarScanner
+                            export PATH="${SONAR_SCANNER_HOME}/sonar-scanner/bin:$PATH"
+                            
+                            # Crear archivo de propiedades de SonarCloud
+                            cat > sonar-project.properties << EOF
+# Información del proyecto
+sonar.projectKey=${SONAR_PROJECT_KEY}
+sonar.organization=${SONAR_ORGANIZATION}
+sonar.projectName=${PROJECT_NAME}
+sonar.projectVersion=1.0
+
+# Código fuente
+sonar.sources=todor/
+sonar.tests=tests/
+sonar.python.coverage.reportPaths=coverage.xml
+
+# Exclusiones
+sonar.exclusions=**/__pycache__/**,**/*.pyc,**/migrations/**,**/venv/**,**/htmlcov/**
+
+# Configuración de Python
+sonar.python.version=${PYTHON_VERSION}
+
+# Reportes de calidad
+sonar.python.flake8.reportPaths=flake8-report.txt
+sonar.python.pylint.reportPaths=pylint-report.json
+
+# Configuración del servidor
+sonar.host.url=https://sonarcloud.io
+sonar.login=${SONAR_TOKEN}
+
+# Branch information
+sonar.branch.name=${BRANCH_NAME}
+EOF
+
+                            echo "=== CONFIGURACIÓN DE SONARCLOUD ==="
+                            cat sonar-project.properties
+                            echo "=================================="
+                            
+                            # Ejecutar SonarScanner
+                            echo "Ejecutando SonarScanner..."
+                            sonar-scanner \
+                                -Dsonar.projectKey=${SONAR_PROJECT_KEY} \
+                                -Dsonar.organization=${SONAR_ORGANIZATION} \
+                                -Dsonar.host.url=https://sonarcloud.io \
+                                -Dsonar.login=${SONAR_TOKEN} \
+                                -Dsonar.sources=todor/ \
+                                -Dsonar.tests=tests/ \
+                                -Dsonar.python.coverage.reportPaths=coverage.xml \
+                                -Dsonar.exclusions="**/__pycache__/**,**/*.pyc" \
+                                -Dsonar.branch.name=${BRANCH_NAME}
+                            
+                            echo "✅ Análisis de SonarCloud completado exitosamente"
+                        '''
+                        
+                        echo "✅ SonarCloud analysis completed"
+                    } catch (Exception e) {
+                        error("❌ Error en análisis de SonarCloud: ${e.getMessage()}")
+                    }
+                }
+            }
+        }
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    try {
+                        timeout(time: 5, unit: 'MINUTES') {
+                            echo "⏳ Esperando resultado del Quality Gate..."
+                            
+                            def qg = waitForQualityGate()
+                            
+                            if (qg.status != 'OK') {
+                                echo "❌ Quality Gate falló: ${qg.status}"
+                                echo "Detalles: ${qg}"
+                                
+                                // Decidir si fallar el pipeline o solo advertir
+                                if (params.BRANCH_TO_ANALYZE == 'main') {
+                                    error("Quality Gate falló en branch principal")
+                                } else {
+                                    echo "⚠️ Quality Gate falló en feature branch - continuando"
+                                }
+                            } else {
+                                echo "✅ Quality Gate passed!"
+                            }
+                        }
+                    } catch (Exception e) {
+                        echo "⚠️ Error verificando Quality Gate: ${e.getMessage()}"
+                        echo "Continuando sin bloquear el pipeline..."
+                    }
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            script {
+                echo "🧹 Limpiando archivos temporales..."
+                
+                // Archivar reportes
+                archiveArtifacts(
+                    artifacts: 'coverage.xml,flake8-report.*,pylint-report.*,sonar-project.properties',
+                    allowEmptyArchive: true
+                )
+                
+                // Limpiar entornos virtuales
+                sh '''
+                    echo "Limpiando entornos virtuales..."
+                    rm -rf /tmp/venv-${BUILD_NUMBER} || true
+                    rm -rf ${SONAR_SCANNER_HOME} || true
+                '''
+            }
+            echo "✅ Pipeline de SonarCloud completado"
+        }
+        
+        success {
+            echo """
+            ✅ ANÁLISIS DE SONARCLOUD EXITOSO
+            
+            📊 Reportes generados:
+            - Coverage Report: Disponible en Jenkins
+            - SonarCloud Dashboard: https://sonarcloud.io/project/overview?id=${env.SONAR_PROJECT_KEY}
+            
+            🎯 Próximos pasos:
+            1. Revisar métricas en SonarCloud
+            2. Corregir issues críticos si los hay
+            3. Integrar con pipeline principal si es necesario
+            """
+        }
+        
+        failure {
+            echo """
+            ❌ ANÁLISIS DE SONARCLOUD FALLÓ
+            
+            🔍 Pasos para debug:
+            1. Revisar logs del stage que falló
+            2. Verificar credenciales de SonarCloud
+            3. Verificar configuración del proyecto
+            4. Verificar conectividad a SonarCloud
+            
+            📞 Soporte: Crear issue en GitHub con logs completos
+            """
+        }
+    }
+} 

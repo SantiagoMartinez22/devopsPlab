@@ -216,16 +216,6 @@ azure-jenkins-infrastructure/
 - ✅ **Limpieza automática** de archivos temporales
 - ✅ **Solo credenciales Azure** requeridas
 
-## 🎯 Diferencias con la Versión Manual
-
-| Aspecto | Versión Manual | Versión Automática |
-|---------|---------------|-------------------|
-| Credenciales Jenkins | 5 (Azure + SSH) | 4 (solo Azure) |
-| Generación SSH | Manual | Automática |
-| Configuración | Compleja | Simple |
-| Mantenimiento | Alto | Bajo |
-| Seguridad | Buena | Excelente |
-| Compatibilidad | Todas | Todas (mejor en estudiante) |
 
 ## 🤝 Soporte
 
@@ -239,6 +229,3 @@ azure-jenkins-infrastructure/
 
 ---
 
-## 🎉 ¡Disfruta tu Jenkins en Azure con SSH automático!
-
-Esta versión es **mucho más simple** que manejar claves SSH manualmente, y funciona **perfectamente** en suscripciones de estudiante. 

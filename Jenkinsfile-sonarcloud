@@ -6,7 +6,7 @@ pipeline {
     parameters {
         choice(
             name: 'BRANCH_TO_ANALYZE', 
-            choices: ['main', 'develop', 'feature/*'], 
+            choices: ['main', 'develop', 'feature/sonarcloud'], 
             description: 'Branch a analizar'
         )
         booleanParam(

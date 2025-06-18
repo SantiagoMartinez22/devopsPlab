@@ -475,47 +475,78 @@ SSHEOF
                     # Directorio temporal de logs
                     LOG_DIR="/tmp/aws-pipeline-logs-${BUILD_NUMBER}"
                     
-                    # Directorio permanente para logs (evitar conflicto con plugin Splunk)
-                    PERMANENT_LOG_DIR="/home/jenkins/aws-pipeline-logs"
-                    mkdir -p $PERMANENT_LOG_DIR
+                    # Directorio permanente para logs (usar directorio temporal para evitar problemas de permisos)
+                    PERMANENT_LOG_DIR="/tmp/jenkins-pipeline-logs"
+                    
+                    # Crear directorio con manejo de errores
+                    if mkdir -p "$PERMANENT_LOG_DIR" 2>/dev/null; then
+                        echo "✅ Directorio de logs creado: $PERMANENT_LOG_DIR"
+                    else
+                        echo "⚠️ No se pudo crear directorio permanente, usando temporal"
+                        PERMANENT_LOG_DIR="/tmp/pipeline-logs-backup-${BUILD_NUMBER}"
+                        mkdir -p "$PERMANENT_LOG_DIR"
+                    fi
                     
                     if [ -d "$LOG_DIR" ]; then
                         # Crear log consolidado
                         CONSOLIDATED_LOG="$PERMANENT_LOG_DIR/aws-pipeline-${BUILD_NUMBER}-$(date +%Y%m%d-%H%M%S).log"
                         
-                        echo "=== PIPELINE AWS BUILD ${BUILD_NUMBER} ===" > $CONSOLIDATED_LOG
-                        echo "Fecha: $(date)" >> $CONSOLIDATED_LOG
-                        echo "Usuario: ${BUILD_USER:-Jenkins}" >> $CONSOLIDATED_LOG
-                        echo "" >> $CONSOLIDATED_LOG
+                        echo "=== PIPELINE AWS BUILD ${BUILD_NUMBER} ===" > "$CONSOLIDATED_LOG" 2>/dev/null || {
+                            echo "⚠️ Error escribiendo archivo consolidado, mostrando logs en consola"
+                            echo "=== PIPELINE AWS BUILD ${BUILD_NUMBER} ==="
+                            echo "Fecha: $(date)"
+                            echo "Usuario: ${BUILD_USER:-Jenkins}"
+                            echo ""
+                            
+                            # Mostrar logs directamente en consola si no se puede escribir archivo
+                            if [ -f "$LOG_DIR/terraform-deploy.log" ]; then
+                                echo "=== TERRAFORM LOGS ==="
+                                tail -20 "$LOG_DIR/terraform-deploy.log"
+                                echo ""
+                            fi
+                            
+                            if [ -f "$LOG_DIR/ansible-deploy.log" ]; then
+                                echo "=== ANSIBLE LOGS ==="
+                                tail -20 "$LOG_DIR/ansible-deploy.log"
+                                echo ""
+                            fi
+                            
+                            echo "✅ Logs mostrados en consola debido a problemas de permisos"
+                            exit 0
+                        }
+                        
+                        echo "Fecha: $(date)" >> "$CONSOLIDATED_LOG"
+                        echo "Usuario: ${BUILD_USER:-Jenkins}" >> "$CONSOLIDATED_LOG"
+                        echo "" >> "$CONSOLIDATED_LOG"
                         
                         # Agregar logs de Terraform si existen
                         if [ -f "$LOG_DIR/terraform-deploy.log" ]; then
-                            echo "=== TERRAFORM LOGS ===" >> $CONSOLIDATED_LOG
-                            cat "$LOG_DIR/terraform-deploy.log" >> $CONSOLIDATED_LOG
-                            echo "" >> $CONSOLIDATED_LOG
+                            echo "=== TERRAFORM LOGS ===" >> "$CONSOLIDATED_LOG"
+                            cat "$LOG_DIR/terraform-deploy.log" >> "$CONSOLIDATED_LOG"
+                            echo "" >> "$CONSOLIDATED_LOG"
                         fi
                         
                         # Agregar logs de Ansible si existen
                         if [ -f "$LOG_DIR/ansible-deploy.log" ]; then
-                            echo "=== ANSIBLE LOGS ===" >> $CONSOLIDATED_LOG
-                            cat "$LOG_DIR/ansible-deploy.log" >> $CONSOLIDATED_LOG
-                            echo "" >> $CONSOLIDATED_LOG
+                            echo "=== ANSIBLE LOGS ===" >> "$CONSOLIDATED_LOG"
+                            cat "$LOG_DIR/ansible-deploy.log" >> "$CONSOLIDATED_LOG"
+                            echo "" >> "$CONSOLIDATED_LOG"
                         fi
                         
                         # Copiar logs individuales también
-                        cp -r "$LOG_DIR"/* "$PERMANENT_LOG_DIR/" 2>/dev/null || true
+                        cp -r "$LOG_DIR"/* "$PERMANENT_LOG_DIR/" 2>/dev/null || echo "⚠️ No se pudieron copiar logs individuales"
                         
                         echo "✅ Logs guardados en:"
                         echo "   📄 Consolidado: $CONSOLIDATED_LOG"
                         echo "   📁 Individuales: $PERMANENT_LOG_DIR"
-                        echo "   📊 Total archivos: $(ls -1 $PERMANENT_LOG_DIR | wc -l)"
+                        echo "   📊 Total archivos: $(ls -1 "$PERMANENT_LOG_DIR" 2>/dev/null | wc -l)"
                         
                         # Mostrar últimas líneas de cada log
                         echo ""
                         echo "📋 Resumen de logs:"
-                        for logfile in $LOG_DIR/*.log; do
+                        for logfile in "$LOG_DIR"/*.log; do
                             if [ -f "$logfile" ]; then
-                                echo "   $(basename $logfile): $(wc -l < $logfile) líneas"
+                                echo "   $(basename "$logfile"): $(wc -l < "$logfile") líneas"
                             fi
                         done
                     else
@@ -658,25 +689,30 @@ DIAG_EOF
                             mkdir -p /tmp/terraform-cleanup-${BUILD_NUMBER}
                             cd /tmp/terraform-cleanup-${BUILD_NUMBER}
                             
-                            # Asegurar que unzip esté disponible
+                            # Verificar que unzip esté disponible (sin intentar instalar para evitar problemas de permisos)
                             if ! command -v unzip &> /dev/null; then
-                                echo "Instalando unzip para limpieza..."
-                                if command -v apt-get &> /dev/null; then
-                                    apt-get update && apt-get install -y unzip
-                                elif command -v yum &> /dev/null; then
-                                    yum install -y unzip
-                                elif command -v apk &> /dev/null; then
-                                    apk add --no-cache unzip
-                                fi
+                                echo "⚠️ unzip no disponible, usando Python como alternativa..."
+                                # Se usará el método alternativo con Python más abajo
                             fi
                             
                             echo "Descargando Terraform para limpieza..."
                             curl -fsSL -o terraform.zip https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip
-                            unzip -o -q terraform.zip
+                            
+                            # Extraer usando unzip o Python como alternativa
+                            if command -v unzip &> /dev/null; then
+                                unzip -o -q terraform.zip
+                            else
+                                echo "Usando Python para extraer el archivo..."
+                                python3 -c "
+import zipfile
+with zipfile.ZipFile('terraform.zip', 'r') as zip_ref:
+    zip_ref.extractall('.')
+"
+                            fi
                             chmod +x terraform
                             
-                            # Volver al directorio de terraform
-                            cd ${WORKSPACE}/infrastructure/terraform
+                            # Volver al directorio de terraform (usar comillas para manejar espacios)
+                            cd "${WORKSPACE}/infrastructure/terraform"
                             
                             # Destruir recursos
                             TERRAFORM_BIN="/tmp/terraform-cleanup-${BUILD_NUMBER}/terraform"

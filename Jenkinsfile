@@ -1,6 +1,7 @@
 pipeline {
-    agent any
-
+    agent {
+        label 'azure'  // Usa el label que configuraste en el slave
+    }
     parameters {
         booleanParam(name: 'DESTROY_INFRASTRUCTURE', defaultValue: false, description: 'Marcar para destruir la infraestructura existente antes del despliegue')
     }

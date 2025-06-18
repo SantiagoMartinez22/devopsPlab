@@ -102,21 +102,41 @@ with zipfile.ZipFile('terraform.zip', 'r') as zip_ref:
             steps {
                 dir('infrastructure/terraform') {
                     sh '''
+                        # Crear directorio para logs personalizados (evitar plugin Splunk)
+                        mkdir -p /tmp/aws-pipeline-logs-${BUILD_NUMBER}
+                        LOG_DIR="/tmp/aws-pipeline-logs-${BUILD_NUMBER}"
+                        
+                        echo "📁 Logs se guardarán en: $LOG_DIR"
+                        
+                        # Configurar logging de Terraform
+                        export TF_LOG=DEBUG
+                        export TF_LOG_PATH="$LOG_DIR/terraform-deploy.log"
+                        
                         # Usar Terraform desde la ubicación temporal
                         TERRAFORM_BIN="/tmp/terraform-${BUILD_NUMBER}/terraform"
                         
-                        # Inicializar Terraform
-                        $TERRAFORM_BIN init
+                        # Log inicial
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') - [TERRAFORM] Iniciando despliegue AWS infraestructura" | tee -a $TF_LOG_PATH
                         
-                        # Crear plan (usando los valores de terraform.tfvars)
+                        # Inicializar Terraform con logging
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') - [TERRAFORM] terraform init" | tee -a $TF_LOG_PATH
+                        $TERRAFORM_BIN init 2>&1 | tee -a $TF_LOG_PATH
+                        
+                        # Crear plan con logging
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') - [TERRAFORM] terraform plan" | tee -a $TF_LOG_PATH
                         $TERRAFORM_BIN plan -out=tfplan \
-                            -var="db_password=${DB_PASSWORD}"
+                            -var="db_password=${DB_PASSWORD}" 2>&1 | tee -a $TF_LOG_PATH
                         
-                        # Aplicar cambios
-                        $TERRAFORM_BIN apply -auto-approve tfplan
+                        # Aplicar cambios con logging
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') - [TERRAFORM] terraform apply" | tee -a $TF_LOG_PATH
+                        $TERRAFORM_BIN apply -auto-approve tfplan 2>&1 | tee -a $TF_LOG_PATH
                         
-                        # Mostrar outputs
-                        $TERRAFORM_BIN output
+                        # Mostrar outputs con logging
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') - [TERRAFORM] terraform output" | tee -a $TF_LOG_PATH
+                        $TERRAFORM_BIN output 2>&1 | tee -a $TF_LOG_PATH
+                        
+                        echo "$(date '+%Y-%m-%d %H:%M:%S') - [TERRAFORM] ✅ Completado" | tee -a $TF_LOG_PATH
+                        echo "📊 Log de Terraform guardado en: $TF_LOG_PATH"
                     '''
                 }
             }
@@ -423,16 +443,83 @@ SSHEOF
                     echo "Inventario creado:"
                     cat hosts
                     
+                    # Crear directorio de logs para Ansible (mismo que Terraform)
+                    LOG_DIR="/tmp/aws-pipeline-logs-${BUILD_NUMBER}"
+                    mkdir -p $LOG_DIR
+                    ANSIBLE_LOG="$LOG_DIR/ansible-deploy.log"
+                    
                     # Exportar variables de entorno para Ansible
                     export GITHUB_REPO="$GITHUB_REPO"
                     export DB_PASSWORD="$DB_PASSWORD"
                     export DB_HOST="$DB_HOST"
                     
-                    # Ejecutar playbook de Ansible
-                    echo "Ejecutando playbook de Ansible..."
-                    ansible-playbook -i hosts deploy.yml -v
+                    # Log inicial de Ansible
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') - [ANSIBLE] Iniciando despliegue aplicación AWS" | tee -a $ANSIBLE_LOG
                     
-                    echo "✅ Aplicación desplegada exitosamente con Ansible"
+                    # Ejecutar playbook de Ansible con logging detallado
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') - [ANSIBLE] Ejecutando playbook deploy.yml" | tee -a $ANSIBLE_LOG
+                    ansible-playbook -i hosts deploy.yml -vvv 2>&1 | tee -a $ANSIBLE_LOG
+                    
+                    echo "$(date '+%Y-%m-%d %H:%M:%S') - [ANSIBLE] ✅ Completado" | tee -a $ANSIBLE_LOG
+                    echo "📊 Log de Ansible guardado en: $ANSIBLE_LOG"
+                '''
+            }
+        }
+
+        stage('Save Pipeline Logs') {
+            steps {
+                sh '''
+                    echo "📁 Guardando logs del pipeline AWS..."
+                    
+                    # Directorio temporal de logs
+                    LOG_DIR="/tmp/aws-pipeline-logs-${BUILD_NUMBER}"
+                    
+                    # Directorio permanente para logs (evitar conflicto con plugin Splunk)
+                    PERMANENT_LOG_DIR="/home/jenkins/aws-pipeline-logs"
+                    mkdir -p $PERMANENT_LOG_DIR
+                    
+                    if [ -d "$LOG_DIR" ]; then
+                        # Crear log consolidado
+                        CONSOLIDATED_LOG="$PERMANENT_LOG_DIR/aws-pipeline-${BUILD_NUMBER}-$(date +%Y%m%d-%H%M%S).log"
+                        
+                        echo "=== PIPELINE AWS BUILD ${BUILD_NUMBER} ===" > $CONSOLIDATED_LOG
+                        echo "Fecha: $(date)" >> $CONSOLIDATED_LOG
+                        echo "Usuario: ${BUILD_USER:-Jenkins}" >> $CONSOLIDATED_LOG
+                        echo "" >> $CONSOLIDATED_LOG
+                        
+                        # Agregar logs de Terraform si existen
+                        if [ -f "$LOG_DIR/terraform-deploy.log" ]; then
+                            echo "=== TERRAFORM LOGS ===" >> $CONSOLIDATED_LOG
+                            cat "$LOG_DIR/terraform-deploy.log" >> $CONSOLIDATED_LOG
+                            echo "" >> $CONSOLIDATED_LOG
+                        fi
+                        
+                        # Agregar logs de Ansible si existen
+                        if [ -f "$LOG_DIR/ansible-deploy.log" ]; then
+                            echo "=== ANSIBLE LOGS ===" >> $CONSOLIDATED_LOG
+                            cat "$LOG_DIR/ansible-deploy.log" >> $CONSOLIDATED_LOG
+                            echo "" >> $CONSOLIDATED_LOG
+                        fi
+                        
+                        # Copiar logs individuales también
+                        cp -r "$LOG_DIR"/* "$PERMANENT_LOG_DIR/" 2>/dev/null || true
+                        
+                        echo "✅ Logs guardados en:"
+                        echo "   📄 Consolidado: $CONSOLIDATED_LOG"
+                        echo "   📁 Individuales: $PERMANENT_LOG_DIR"
+                        echo "   📊 Total archivos: $(ls -1 $PERMANENT_LOG_DIR | wc -l)"
+                        
+                        # Mostrar últimas líneas de cada log
+                        echo ""
+                        echo "📋 Resumen de logs:"
+                        for logfile in $LOG_DIR/*.log; do
+                            if [ -f "$logfile" ]; then
+                                echo "   $(basename $logfile): $(wc -l < $logfile) líneas"
+                            fi
+                        done
+                    else
+                        echo "⚠️ No se encontraron logs temporales en $LOG_DIR"
+                    fi
                 '''
             }
         }

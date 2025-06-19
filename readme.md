@@ -1,6 +1,12 @@
 # 🚀 DevOps Todo List Application
 
+<<<<<<< HEAD
 Trigger a new job
+=======
+trigger job new commit
+
+Prubas Jenkins Web hook
+>>>>>>> ba2efe3ef447585b5116e349029009573d297d12
 
 <div align="center">
 

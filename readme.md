@@ -1,5 +1,7 @@
 # 🚀 DevOps Todo List Application
 
+Trigger a new job
+
 <div align="center">
 
 ![Python](https://img.shields.io/badge/python-v3.8+-blue.svg)

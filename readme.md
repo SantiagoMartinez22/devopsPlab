@@ -1,6 +1,6 @@
 # 🚀 DevOps Todo List Application
 
-trigger job new
+trigger job new commit
 
 <div align="center">
 

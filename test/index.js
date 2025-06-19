@@ -14,4 +14,7 @@ describe('sum', () => {
   it('should handle zero', () => {
     assert.equal(sum(0, 0), 0);
   });
+  it('should handle string', () => {
+    assert.equal(sum('3', '5'), 8);
+  });
 });

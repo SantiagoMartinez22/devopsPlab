@@ -11,4 +11,7 @@ describe('sum', () => {
   it('should handle decimal', () => {
     assert.equal(sum(3.5, 7.1), 10.6);
   });
+  it('should handle zero', () => {
+    assert.equal(sum(0, 0), 0);
+  });
 });

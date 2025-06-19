@@ -630,12 +630,45 @@ DIAG_EOF
     }
 } 
 
-post {
-    always {
-        emailext (
-            subject: "Build ${currentBuild.currentResult}: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
-            body: "El build terminó con estado: ${currentBuild.currentResult}.\\nDetalles en ${env.BUILD_URL}",
-            to: 'vemaurijames@gmail.com'
-        )
+pipeline {
+    agent any
+
+    stages {
+        stage('Build') {
+            steps {
+                echo 'Ejecutando la etapa Build...'
+                // Aquí van tus comandos de build, por ejemplo:
+                // sh 'npm install'
+            }
+        }
+        stage('Tests') {
+            steps {
+                echo 'Ejecutando la etapa Tests...'
+                // Aquí tus pruebas, por ejemplo:
+                // sh 'npm test'
+            }
+        }
+    }
+    post {
+        always {
+            emailext (
+                to: "vemaurijames@gmail.com",
+                subject: "Resultado build #${env.BUILD_NUMBER}: ${currentBuild.currentResult} | ${env.JOB_NAME}",
+                body: """
+                Hola,
+
+                El build #${env.BUILD_NUMBER} de ${env.JOB_NAME} finalizó con estado: ${currentBuild.currentResult}.
+
+                Rama: ${env.GIT_BRANCH}
+                Detalles del build: ${env.BUILD_URL}
+
+                Último commit:
+                ${sh(returnStdout: true, script: 'git log -1 --oneline').trim()}
+
+                Saludos,
+                Jenkins
+                """
+            )
+        }
     }
 }

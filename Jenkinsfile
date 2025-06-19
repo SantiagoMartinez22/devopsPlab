@@ -629,3 +629,13 @@ DIAG_EOF
         }
     }
 } 
+
+post {
+    always {
+        emailext (
+            subject: "Build ${currentBuild.currentResult}: Job ${env.JOB_NAME} [${env.BUILD_NUMBER}]",
+            body: "El build terminó con estado: ${currentBuild.currentResult}.\\nDetalles en ${env.BUILD_URL}",
+            to: 'vemaurijames@gmail.com'
+        )
+    }
+}

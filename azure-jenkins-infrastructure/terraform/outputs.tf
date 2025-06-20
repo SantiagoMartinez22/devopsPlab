@@ -32,4 +32,48 @@ output "ssh_connection_master" {
 output "ssh_connection_slave_via_master" {
   description = "Comando para conectarse al Slave vía Master"
   value       = "ssh -i azure_jenkins_key -J azureuser@${azurerm_public_ip.master.ip_address} azureuser@${azurerm_network_interface.slave.private_ip_address}"
+}
+
+# Splunk outputs
+output "splunk_enterprise_url" {
+  description = "URL para acceder a Splunk Enterprise"
+  value       = "http://${azurerm_public_ip.master.ip_address}:8000"
+}
+
+output "splunk_enterprise_credentials" {
+  description = "Credenciales de Splunk Enterprise"
+  value       = {
+    username = "admin"
+    password = "Projectlabdevops"
+    url      = "http://${azurerm_public_ip.master.ip_address}:8000"
+  }
+  sensitive = true
+}
+
+output "splunk_forwarder_credentials" {
+  description = "Credenciales de Splunk Universal Forwarder"
+  value       = {
+    username = "admin"
+    password = "ProjectlabdevopsUF"
+  }
+  sensitive = true
+}
+
+output "access_information" {
+  description = "Información completa de acceso"
+  value = {
+    jenkins = {
+      url = "http://${azurerm_public_ip.master.ip_address}:8080"
+      note = "Password inicial en /var/lib/jenkins/secrets/initialAdminPassword"
+    }
+    splunk_enterprise = {
+      url = "http://${azurerm_public_ip.master.ip_address}:8000"
+      username = "admin"
+      password = "Projectlabdevops"
+    }
+    ssh = {
+      master = "ssh -i azure_jenkins_key azureuser@${azurerm_public_ip.master.ip_address}"
+      slave_via_master = "ssh -i azure_jenkins_key -J azureuser@${azurerm_public_ip.master.ip_address} azureuser@${azurerm_network_interface.slave.private_ip_address}"
+    }
+  }
 } 

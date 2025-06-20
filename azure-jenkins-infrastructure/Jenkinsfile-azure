@@ -42,7 +42,7 @@ pipeline {
                             
                             echo "Extrayendo Terraform..."
                             if command -v unzip &> /dev/null; then
-                                unzip -q terraform.zip
+                                unzip -o -q terraform.zip
                             else
                                 # Alternativa si unzip no está disponible
                                 python3 -c "
